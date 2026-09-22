@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+
+# Virtual environment
+.venv/
+venv/
+
+# Pytest
+.pytest_cache/
+
+# Spark local artifacts
+spark-warehouse/
+metastore_db/
+derby.log
+
+# Editor / OS
+.vscode/
+.DS_Store
