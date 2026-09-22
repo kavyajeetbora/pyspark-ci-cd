@@ -11,8 +11,8 @@ def dedup_data_latest(df):
     Keep only the latest record for order_id column
     '''
     w = Window.partitionBy('order_id').orderBy(
-        F.col("updated_at").desc(),
-        F.col("qty").desc()   # tiebreaker
+        F.col("updated_at").asc(),
+        F.col("qty").asc()   # tiebreaker
     )
 
     dedup_df = (
