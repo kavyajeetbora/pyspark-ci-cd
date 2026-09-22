@@ -1,48 +1,45 @@
-from pyspark.sql import SparkSession, Window
-import pyspark.sql.functions as F
+import argparse
 import os
 import sys
+from pyspark.sql import SparkSession, Window
+import pyspark.sql.functions as F
 
-os.environ["PYSPARK_PYTHON"] = sys.executable
-os.environ["PYSPARK_DRIVER_PYTHON"] = sys.executable
+
+if os.name == "nt":  # Windows only: local fix, not needed on the cloud
+    os.environ["PYSPARK_PYTHON"] = sys.executable
+    os.environ["PYSPARK_DRIVER_PYTHON"] = sys.executable
+
 
 def dedup_data_latest(df):
-    '''
-    Keep only the latest record for order_id column
-    '''
-    w = Window.partitionBy('order_id').orderBy(
+    """Keep only the latest record per order_id."""
+    w = Window.partitionBy("order_id").orderBy(
         F.col("updated_at").desc(),
-        F.col("qty").desc()   # tiebreaker
+        F.col("qty").desc(),  # tiebreaker
     )
+    return df.withColumn("rn", F.row_number().over(w)).filter("rn = 1").drop("rn")
 
-    dedup_df = (
-        df
-        .withColumn("rn", F.row_number().over(w))
-        .filter(F.col('rn')==1)
-        .drop("rn")
+
+def run(spark, input_path, output_path):
+    df = (
+        spark.read.option("header", True)
+        .option("inferSchema", True)
+        .csv(input_path)
     )
+    result = dedup_data_latest(df)
+    result.write.mode("overwrite").parquet(output_path)
+    return result.count()
 
-    return dedup_df
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input", required=True)
+    parser.add_argument("--output", required=True)
+    args = parser.parse_args()
+
+    spark = SparkSession.builder.appName("dedupe-pipeline").getOrCreate()
+    rows = run(spark, args.input, args.output)
+    print(f"Wrote {rows} rows to {args.output}")
 
 
 if __name__ == "__main__":
-
-    spark = SparkSession.builder.master('local[1]').appName("Fact Sales Testing").getOrCreate()
-
-    data = [
-        ("CUS-01", 10, "2026-09-20 09:00"),
-        ("CUS-01", 12, "2026-09-20 11:00"),  # corrected later, should win
-        ("CUS-02", 5,  "2026-09-20 09:30"),
-    ]
-    columns = ["order_id", "qty", "updated_at"]
-
-    df = spark.createDataFrame(data, columns)
-
-    print("Before:")
-    df.show()
-    print("After:")
-
-    dedup_df = dedup_data_latest(df)
-    dedup_df.show()
-
-    spark.stop()
+    main()
